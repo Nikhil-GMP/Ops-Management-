@@ -8,8 +8,8 @@ const H = 380;
 const PAD = { l: 58, r: 34, t: 18, b: 32 };
 const GREEN = "#2dff8f";
 const RED = "#ff3d6a";
-const BOLT = "#8ff3ff";
-const BOLT_BAD = "#ffb347";
+const CYAN = "#8ff3ff";
+const AMBER = "#ffb347";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function dayLabel(d) {
@@ -48,12 +48,6 @@ function niceAxis(maxRupees) {
   }
   const top = Math.ceil((maxRupees * 1.04) / step) * step;
   return { top: top, step: step };
-}
-
-// Same input always gives the same number, so server and browser draw the same bolt.
-function rnd(n) {
-  const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
-  return x - Math.floor(x);
 }
 
 function pt(x, y) {
@@ -123,7 +117,7 @@ export default function Chart({ daily, today }) {
   const x = (i) => PAD.l + (n <= 1 ? iw / 2 : (i * iw) / (n - 1));
   const y = (paise) => PAD.t + ih - (paise / 100 / top) * ih;
 
-  // Glowing fill between the two lines (green = profit, red = loss).
+  // Coloured fill between the two lines (green = profit, red = loss).
   const shades = [];
   for (let i = 0; i < n - 1; i++) {
     const a = rows[i];
@@ -155,57 +149,29 @@ export default function Chart({ daily, today }) {
   const revD = toD(rows.map((r, i) => pt(x(i), y(r.revenue))));
   const outD = toD(rows.map((r, i) => pt(x(i), y(r.outflow))));
 
-  // Lightning: a jagged electric line through the middle of the profit gap.
-  // It is drawn only where the two lines are far enough apart.
-  const boltRuns = [];
-  let run = [];
-  for (let i = 0; i < n - 1; i++) {
-    const a = rows[i];
-    const b = rows[i + 1];
-    const x0 = x(i);
-    const x1 = x(i + 1);
-    const m0 = (y(a.revenue) + y(a.outflow)) / 2;
-    const m1 = (y(b.revenue) + y(b.outflow)) / 2;
-    const gap = (Math.abs(y(a.revenue) - y(a.outflow)) + Math.abs(y(b.revenue) - y(b.outflow))) / 2;
-    if (gap < 9) {
-      if (run.length > 1) boltRuns.push(run);
-      run = [];
-      continue;
-    }
-    const amp = Math.min(gap * 0.26, 9);
-    for (let s = 0; s < 3; s++) {
-      const t = s / 3;
-      const jit = (rnd(i * 7 + s) - 0.5) * 2 * amp;
-      run.push(pt(x0 + (x1 - x0) * t, m0 + (m1 - m0) * t + jit));
-    }
-    if (i === n - 2) run.push(pt(x1, m1));
-  }
-  if (run.length > 1) boltRuns.push(run);
-  const boltD = boltRuns.map((r) => toD(r)).join(" ");
-
-  // Short vertical sparks that jump between the two lines.
-  const sparks = [];
-  const sparkEvery = Math.max(1, Math.round(n / 9));
-  for (let i = 0; i < n; i += sparkEvery) {
-    const y1 = y(rows[i].revenue);
-    const y2 = y(rows[i].outflow);
-    if (Math.abs(y1 - y2) < 18) continue;
-    const p = [];
-    for (let s = 0; s <= 6; s++) {
-      const t = s / 6;
-      const dx = s === 0 || s === 6 ? 0 : (rnd(i * 13 + s) - 0.5) * 11;
-      p.push(pt(x(i) + dx, y1 + (y2 - y1) * t));
-    }
-    sparks.push({ i: i, d: toD(p), good: rows[i].revenue >= rows[i].outflow });
-  }
-
   const last = n ? rows[n - 1] : null;
-  const lastGood = last ? last.revenue >= last.outflow : true;
-  const boltColor = lastGood ? BOLT : BOLT_BAD;
-
   const ticks = [];
   for (let v = 0; v <= top + 0.001; v += axis.step) ticks.push(v);
   const step = Math.max(1, Math.ceil(n / 7));
+
+  // Is the profit growing or shrinking? Compares a point with 7 days (or 1 month) earlier.
+  const lag = view === "monthly" ? 1 : 7;
+  function trendAt(idx) {
+    if (idx < 1 || !rows[idx]) return null;
+    const b = Math.max(0, idx - lag);
+    return rows[idx].revenue - rows[idx].outflow - (rows[b].revenue - rows[b].outflow);
+  }
+  function trendText(tr, isHover) {
+    if (tr === null) return "";
+    const when =
+      view === "monthly"
+        ? "vs previous month"
+        : isHover
+        ? "vs 7 days earlier"
+        : "in last 7 days";
+    if (tr === 0) return "No change " + when;
+    return (tr > 0 ? "+" : "-") + inr(Math.abs(tr)) + " " + when;
+  }
 
   function onMove(e) {
     if (!n) return;
@@ -233,7 +199,22 @@ export default function Chart({ daily, today }) {
   const showOut = shown ? shown.outflow : 0;
   const showProfit = showRev - showOut;
   const showLabel = hv ? hv.label : last ? "Till " + last.label : "";
+  const showTrend = n ? trendAt(hv ? hover : n - 1) : null;
+  const trendClass = showTrend === null ? "" : showTrend > 0 ? "up" : showTrend < 0 ? "down" : "flat";
   const animKey = view + "-" + range;
+
+  // Small profit tag drawn inside the gap, at the right end (only when there is room).
+  const curProfit = last ? last.revenue - last.outflow : 0;
+  const curTrend = n ? trendAt(n - 1) : null;
+  const gapPx = last ? Math.abs(y(last.revenue) - y(last.outflow)) : 0;
+  const tagLine1 = "PROFIT " + inr(curProfit);
+  const tagLine2 = curTrend === null ? "" : trendText(curTrend, false);
+  const tagW = Math.max(tagLine1.length * 8.2, tagLine2.length * 6.6) + 36;
+  const tagCx = last ? x(n - 1) - 16 : 0;
+  const tagCy = last ? (y(last.revenue) + y(last.outflow)) / 2 : 0;
+  const showTag = !!last && n > 2 && gapPx >= 58 && tagCx - tagW > PAD.l;
+  const tagColor = curProfit >= 0 ? CYAN : AMBER;
+  const tagTrendColor = curTrend === null || curTrend === 0 ? "#8b93a7" : curTrend > 0 ? GREEN : RED;
 
   return (
     <div className="chart-box neon">
@@ -264,6 +245,12 @@ export default function Chart({ daily, today }) {
         <div className="ns">
           <div className="ns-k">Profit</div>
           <div className={"ns-v " + (showProfit >= 0 ? "b" : "o")}>{inr(showProfit)}</div>
+          {showTrend !== null ? (
+            <div className={"ns-trend " + trendClass}>
+              <span className="tri" />
+              <span>{trendText(showTrend, !!hv)}</span>
+            </div>
+          ) : null}
         </div>
         <div className="ns-when">{showLabel}</div>
       </div>
@@ -329,28 +316,12 @@ export default function Chart({ daily, today }) {
               ))}
             </g>
 
-            <path d={outD} className="ln-wide" stroke={RED} filter="url(#glowBig)" />
-            <path d={revD} className="ln-wide" stroke={GREEN} filter="url(#glowBig)" />
-            <path d={outD} className="ln-draw" stroke={RED} strokeWidth="3.2" pathLength="1" filter="url(#glow)" />
-            <path d={revD} className="ln-draw" stroke={GREEN} strokeWidth="3.2" pathLength="1" filter="url(#glow)" />
-            <path d={outD} className="ln-draw" stroke="#ffffff" strokeOpacity="0.6" strokeWidth="1" pathLength="1" />
-            <path d={revD} className="ln-draw" stroke="#ffffff" strokeOpacity="0.6" strokeWidth="1" pathLength="1" />
-
-            <g className="fx-fade-late">
-              {sparks.map((s) => (
-                <path
-                  key={s.i}
-                  d={s.d}
-                  className="spark"
-                  stroke={s.good ? BOLT : BOLT_BAD}
-                  filter="url(#glow)"
-                  style={{ animationDelay: ((s.i * 37) % 23) / 10 + "s" }}
-                />
-              ))}
-              <path d={boltD} className="bolt-halo" stroke={boltColor} filter="url(#glowBig)" />
-              <path d={boltD} className="bolt-core" stroke={boltColor} filter="url(#glow)" />
-              <path d={boltD} className="bolt-flow" stroke="#ffffff" />
-            </g>
+            <path fill="none" d={outD} className="ln-wide" stroke={RED} filter="url(#glowBig)" />
+            <path fill="none" d={revD} className="ln-wide" stroke={GREEN} filter="url(#glowBig)" />
+            <path fill="none" d={outD} className="ln-draw" stroke={RED} strokeWidth="3.2" pathLength="1" filter="url(#glow)" />
+            <path fill="none" d={revD} className="ln-draw" stroke={GREEN} strokeWidth="3.2" pathLength="1" filter="url(#glow)" />
+            <path fill="none" d={outD} className="ln-draw" stroke="#ffffff" strokeOpacity="0.6" strokeWidth="1" pathLength="1" />
+            <path fill="none" d={revD} className="ln-draw" stroke="#ffffff" strokeOpacity="0.6" strokeWidth="1" pathLength="1" />
           </g>
 
           {n <= 45
@@ -368,6 +339,38 @@ export default function Chart({ daily, today }) {
               <circle className="pulse" cx={x(n - 1)} cy={y(last.outflow)} r="5" fill={RED} style={{ animationDelay: "0.6s" }} />
               <circle cx={x(n - 1)} cy={y(last.revenue)} r="5" fill="#ffffff" stroke={GREEN} strokeWidth="2.5" filter="url(#glow)" />
               <circle cx={x(n - 1)} cy={y(last.outflow)} r="5" fill="#ffffff" stroke={RED} strokeWidth="2.5" filter="url(#glow)" />
+            </g>
+          ) : null}
+
+          {showTag ? (
+            <g>
+              <rect
+                x={tagCx - tagW}
+                y={tagCy - 24}
+                width={tagW}
+                height={48}
+                rx="9"
+                fill="#05070c"
+                fillOpacity="0.78"
+                stroke={tagColor}
+                strokeOpacity="0.55"
+              />
+              <text x={tagCx - 12} y={tagCy - 4} textAnchor="end" fontSize="14" fontWeight="bold" fill={tagColor}>
+                {tagLine1}
+              </text>
+              {curTrend !== null ? (
+                <g>
+                  {curTrend > 0 ? (
+                    <polygon points={pt(tagCx - tagW + 13, tagCy + 16) + " " + pt(tagCx - tagW + 21, tagCy + 16) + " " + pt(tagCx - tagW + 17, tagCy + 8)} fill={tagTrendColor} />
+                  ) : null}
+                  {curTrend < 0 ? (
+                    <polygon points={pt(tagCx - tagW + 13, tagCy + 8) + " " + pt(tagCx - tagW + 21, tagCy + 8) + " " + pt(tagCx - tagW + 17, tagCy + 16)} fill={tagTrendColor} />
+                  ) : null}
+                  <text x={tagCx - 12} y={tagCy + 16} textAnchor="end" fontSize="11" fill={tagTrendColor}>
+                    {tagLine2}
+                  </text>
+                </g>
+              ) : null}
             </g>
           ) : null}
 
@@ -394,7 +397,8 @@ export default function Chart({ daily, today }) {
 
       <div className="small">
         Green line = total revenue so far. Red line = total expenses so far (your entries + refunds + Razorpay
-        charges). The glowing gap between them is your profit. Hover or tap the chart to see any day or month.
+        charges). The coloured gap between them is your profit: if the gap is getting wider, profit is growing.
+        Hover or tap the chart to see any day or month.
       </div>
     </div>
   );
