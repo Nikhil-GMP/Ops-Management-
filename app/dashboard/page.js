@@ -2,7 +2,15 @@ import { redirect } from "next/navigation";
 import { db } from "../../lib/supabase";
 import { isAdmin } from "../../lib/auth";
 import { inr } from "../../lib/money";
+import { fetchAll } from "../../lib/fetchall";
+import { buildDaily, bufferInfo, todayIST } from "../../lib/series";
+import {
+  BUFFER_OPENING_PAISE,
+  BUFFER_PER_DAY_PAISE,
+  BUFFER_OPENING_CUT_FROM_PROFIT,
+} from "../../lib/config";
 import { ExpenseTable, LogoutButton } from "./Client";
+import Chart from "./Chart";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +23,7 @@ export default async function Dashboard() {
     redirect("/login");
   }
 
-  const [months, expenses, payments, nonInr] = await Promise.all([
+  const [months, expenses, payments, nonInr, sPay, sRef, sExp] = await Promise.all([
     db().from("monthly_summary").select("*"),
     db()
       .from("expenses")
@@ -32,6 +40,11 @@ export default async function Dashboard() {
       .from("payments")
       .select("id", { count: "exact", head: true })
       .neq("currency", "INR"),
+    fetchAll("payments", "id,amount_paise,fee_paise,tax_paise,paid_at", (q) =>
+      q.eq("currency", "INR")
+    ),
+    fetchAll("refunds", "id,amount_paise,refunded_at", (q) => q.eq("currency", "INR")),
+    fetchAll("expenses", "id,amount_paise,spent_on"),
   ]);
 
   const monthRows = months.data || [];
@@ -46,7 +59,13 @@ export default async function Dashboard() {
   );
   const profit = t.revenue - t.refunds - t.charges - t.expenses;
 
-  const firstError = months.error || expenses.error || payments.error;
+  const today = todayIST();
+  const daily = buildDaily(sPay.rows, sRef.rows, sExp.rows, today);
+  const buf = bufferInfo(today);
+  const profitAfterBuffer = profit - buf.deduction;
+
+  const firstError =
+    months.error || expenses.error || payments.error || sPay.error || sRef.error || sExp.error;
 
   return (
     <div className="wrap">
@@ -85,6 +104,28 @@ export default async function Dashboard() {
         Profit = Revenue - Refunds - Razorpay charges - Expenses. Only INR payments are counted
         {nonInr.count ? " (" + nonInr.count + " non-INR payment(s) excluded)" : ""}.
       </div>
+
+      <div className="cards" style={{ marginTop: 12 }}>
+        <div className="card">
+          <div className="k">Buffer</div>
+          <div className="v">{inr(buf.buffer)}</div>
+          <div className="s">
+            {BUFFER_OPENING_PAISE ? inr(BUFFER_OPENING_PAISE) + " opening + " : ""}
+            {inr(BUFFER_PER_DAY_PAISE)} x {buf.days} day(s)
+          </div>
+        </div>
+        <div className="card">
+          <div className="k">Profit after buffer</div>
+          <div className={"v " + tone(profitAfterBuffer)}>{inr(profitAfterBuffer)}</div>
+          <div className="s">
+            Profit - {inr(buf.deduction)}
+            {BUFFER_OPENING_CUT_FROM_PROFIT ? "" : " (opening buffer not cut)"}
+          </div>
+        </div>
+      </div>
+
+      <h2>Revenue vs Expenses</h2>
+      <Chart daily={daily} today={today} />
 
       <h2>Month-wise</h2>
       <div className="scroll">
