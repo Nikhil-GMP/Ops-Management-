@@ -37,3 +37,31 @@ td input, td select { padding: 6px; font-size: 14px; }
 .seg-btn.on { background: #3b82f6; color: #fff; }
 .chart-info { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; margin-bottom: 8px; min-height: 22px; }
 .chart-info .ci-label { color: #9aa0a6; }
+.chart-box.neon { background: radial-gradient(120% 120% at 20% 0%, #121a2b 0%, #0a0d14 60%); border: 1px solid #1f2a44; box-shadow: 0 0 40px rgba(45, 255, 143, 0.06), inset 0 0 60px rgba(56, 189, 248, 0.04); }
+.neon-stats { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 28px; margin-bottom: 6px; }
+.ns-k { font-size: 11px; color: #8b93a7; text-transform: uppercase; letter-spacing: 0.06em; }
+.ns-v { font-size: 22px; font-weight: bold; margin-top: 2px; }
+.ns-v.g { color: #2dff8f; text-shadow: 0 0 14px rgba(45, 255, 143, 0.6); }
+.ns-v.r { color: #ff3d6a; text-shadow: 0 0 14px rgba(255, 61, 106, 0.6); }
+.ns-v.b { color: #8ff3ff; text-shadow: 0 0 16px rgba(143, 243, 255, 0.7); }
+.ns-v.o { color: #ffb347; text-shadow: 0 0 16px rgba(255, 179, 71, 0.7); }
+.ns-when { font-size: 13px; color: #8b93a7; margin-left: auto; }
+.ln-wide { fill: none; stroke-width: 7; stroke-linejoin: round; stroke-linecap: round; opacity: 0.45; }
+.ln-draw { fill: none; stroke-linejoin: round; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 0; animation: lnDraw 1.6s ease-out backwards; }
+@keyframes lnDraw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.fx-fade { animation: fadeIn 1.4s ease-out 0.5s backwards; }
+.fx-fade-late { animation: fadeIn 0.8s ease-out 1.3s backwards; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.bolt-halo { fill: none; stroke-width: 6; stroke-linejoin: round; opacity: 0.4; animation: flicker 2.4s infinite; }
+.bolt-core { fill: none; stroke-width: 1.7; stroke-linejoin: round; stroke-linecap: round; animation: flicker 2.4s infinite; }
+.bolt-flow { fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 2 12; animation: flow 1.1s linear infinite; opacity: 0.95; }
+@keyframes flow { to { stroke-dashoffset: -28; } }
+.spark { fill: none; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; opacity: 0; animation: zap 2.3s infinite; }
+@keyframes zap { 0%, 100% { opacity: 0; } 6% { opacity: 1; } 10% { opacity: 0.15; } 14% { opacity: 0.95; } 22% { opacity: 0; } }
+@keyframes flicker { 0%, 100% { opacity: 1; } 8% { opacity: 0.45; } 12% { opacity: 1; } 55% { opacity: 0.8; } 60% { opacity: 0.4; } 64% { opacity: 1; } }
+.pulse { transform-box: fill-box; transform-origin: center; animation: pulse 1.8s ease-out infinite; opacity: 0.8; }
+@keyframes pulse { from { transform: scale(1); opacity: 0.8; } to { transform: scale(3); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .ln-draw, .fx-fade, .fx-fade-late, .bolt-halo, .bolt-core, .bolt-flow, .pulse { animation: none; }
+  .spark { animation: none; opacity: 0.8; }
+}
